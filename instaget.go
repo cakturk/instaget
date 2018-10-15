@@ -14,95 +14,6 @@ import (
 	"golang.org/x/net/html"
 )
 
-func main() {
-	if len(os.Args) < 2 {
-		fmt.Println("requires a URL")
-		os.Exit(1)
-	}
-	if _, err := url.Parse(os.Args[1]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-	if err := scrapeImages(os.Args[1]); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
-}
-
-func scrapeImages(u string) error {
-	resp, err := http.Get(u)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	f, err := getJSON(resp.Body)
-	if err != nil {
-		return err
-	}
-	typ, jdata, err := getType(f)
-	if err != nil {
-		return err
-	}
-
-	switch typ {
-	case graphImage:
-		p := graphImageParser{json: jdata}
-		r, err := p.displayResources()
-		if err != nil {
-			return err
-		}
-		return downloadFile(r[len(r)-1].src)
-	case graphSidecar:
-		p := graphSidecarParser{json: jdata}
-		s, err := p.sidecarEdges()
-		if err != nil {
-			return err
-		}
-		var wg sync.WaitGroup
-		for _, g := range s {
-			res, err := g.displayResources()
-			if err != nil {
-				return err
-			}
-			wg.Add(1)
-			go func(dr *displayResource) {
-				downloadFile(dr.src)
-				wg.Done()
-			}(res[len(res)-1])
-		}
-		wg.Wait()
-	case profilePage:
-		fmt.Println("profile page is not yet supported")
-	}
-	return nil
-}
-
-func downloadFile(urlStr string) error {
-	resp, err := http.Get(urlStr)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed status code: %d", resp.StatusCode)
-	}
-	u, err := url.Parse(urlStr)
-	if err != nil {
-		return err
-	}
-	out, err := os.Create(path.Base(u.Path))
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
 type graphImageParser struct {
 	json map[string]interface{}
 }
@@ -324,4 +235,93 @@ func findJSONNode(r io.Reader) (*html.Node, error) {
 		return nil, fmt.Errorf("missing script element")
 	}
 	return snode, nil
+}
+
+func downloadFile(urlStr string) error {
+	resp, err := http.Get(urlStr)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download failed status code: %d", resp.StatusCode)
+	}
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return err
+	}
+	out, err := os.Create(path.Base(u.Path))
+	defer out.Close()
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func scrapeImages(u string) error {
+	resp, err := http.Get(u)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	f, err := getJSON(resp.Body)
+	if err != nil {
+		return err
+	}
+	typ, jdata, err := getType(f)
+	if err != nil {
+		return err
+	}
+
+	switch typ {
+	case graphImage:
+		p := graphImageParser{json: jdata}
+		r, err := p.displayResources()
+		if err != nil {
+			return err
+		}
+		return downloadFile(r[len(r)-1].src)
+	case graphSidecar:
+		p := graphSidecarParser{json: jdata}
+		s, err := p.sidecarEdges()
+		if err != nil {
+			return err
+		}
+		var wg sync.WaitGroup
+		for _, g := range s {
+			res, err := g.displayResources()
+			if err != nil {
+				return err
+			}
+			wg.Add(1)
+			go func(dr *displayResource) {
+				downloadFile(dr.src)
+				wg.Done()
+			}(res[len(res)-1])
+		}
+		wg.Wait()
+	case profilePage:
+		fmt.Println("profile page is not yet supported")
+	}
+	return nil
+}
+
+func main() {
+	if len(os.Args) < 2 {
+		fmt.Println("requires a URL")
+		os.Exit(1)
+	}
+	if _, err := url.Parse(os.Args[1]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := scrapeImages(os.Args[1]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 }
