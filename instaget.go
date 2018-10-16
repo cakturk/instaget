@@ -14,6 +14,11 @@ import (
 	"golang.org/x/net/html"
 )
 
+const (
+	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36"
+	queryHash = "5b0222df65d7f6659c9b82246780caa7"
+)
+
 type graphImageParser struct {
 	json map[string]interface{}
 }
@@ -237,15 +242,26 @@ func findJSONNode(r io.Reader) (*html.Node, error) {
 	return snode, nil
 }
 
+func httpGet(url string) (resp *http.Response, err error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", userAgent)
+	resp, err = http.DefaultClient.Do(req)
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("instaget.httpGet: %s", resp.Status)
+	}
+	return resp, nil
+}
+
 func downloadFile(urlStr string) error {
-	resp, err := http.Get(urlStr)
+	resp, err := httpGet(urlStr)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed status code: %d", resp.StatusCode)
-	}
 	u, err := url.Parse(urlStr)
 	if err != nil {
 		return err
@@ -260,15 +276,11 @@ func downloadFile(urlStr string) error {
 }
 
 func scrapeImages(u string) error {
-	resp, err := http.Get(u)
+	resp, err := httpGet(u)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
 	f, err := getJSON(resp.Body)
 	if err != nil {
 		return err
