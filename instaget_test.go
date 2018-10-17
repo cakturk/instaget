@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"reflect"
 	"testing"
@@ -124,6 +125,22 @@ func TestGraphSidecarParser(t *testing.T) {
 		got, _ := edges[i].displayResources()
 		if !reflect.DeepEqual(c.res, got) {
 			t.Errorf("got: %q, want: %q", got, c.res)
+		}
+	}
+}
+
+func TestProfilePage(t *testing.T) {
+	p := new(ProfilePostPage)
+	files := []string{
+		"json/instagram-profile-page.json",
+		"json/instagram-single-pic.json",
+		"json/instagram-multi-pic.json",
+	}
+	for _, f := range files {
+		buf := readAllOrDie(f, t)
+		err := json.Unmarshal(buf, p)
+		if err != nil {
+			t.Error(err)
 		}
 	}
 }

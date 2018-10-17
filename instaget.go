@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -9,10 +10,12 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 
 	"golang.org/x/net/html"
 )
+
+//                             shortcode
+// https://www.instagram.com/p/BpAGN0pBrSH/?__a=1
 
 const (
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36"
@@ -249,6 +252,9 @@ func httpGet(url string) (resp *http.Response, err error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		return nil, fmt.Errorf("instaget.httpGet: %s", resp.Status)
@@ -275,57 +281,67 @@ func downloadFile(urlStr string) error {
 	return nil
 }
 
+func downloadWorker(urls <-chan string) <-chan error {
+	errCh := make(chan error, 1)
+	go func() {
+		for u := range urls {
+			err := downloadFile(u)
+			if err != nil {
+				errCh <- err
+				return
+			}
+		}
+		errCh <- nil
+	}()
+	return errCh
+}
+
+func scrapeWorker() {
+}
+
 func scrapeImages(u string) error {
 	resp, err := httpGet(u)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
-	f, err := getJSON(resp.Body)
+	s, err := getJSON(resp.Body)
 	if err != nil {
 		return err
 	}
-	typ, jdata, err := getType(f)
+	p := new(ProfilePostPage)
+	err = json.Unmarshal([]byte(s), p)
 	if err != nil {
 		return err
 	}
-
-	switch typ {
-	case graphImage:
-		p := graphImageParser{json: jdata}
-		r, err := p.displayResources()
-		if err != nil {
-			return err
-		}
-		return downloadFile(r[len(r)-1].src)
-	case graphSidecar:
-		p := graphSidecarParser{json: jdata}
-		s, err := p.sidecarEdges()
-		if err != nil {
-			return err
-		}
-		var wg sync.WaitGroup
-		for _, g := range s {
-			res, err := g.displayResources()
-			if err != nil {
-				return err
+	paths := make(chan string)
+	errc := downloadWorker(paths)
+	switch {
+	case len(p.EntryData.ProfilePage) > 0:
+	case len(p.EntryData.PostPage) > 0:
+		sm := &p.EntryData.PostPage[0].Graphql.ShortcodeMedia
+		switch {
+		case len(sm.EdgeSidecarToChildren.Edges) > 0:
+			edges := sm.EdgeSidecarToChildren.Edges
+			for i := range edges {
+				e := &edges[i]
+				paths <- e.Node.DisplayResources[2].Src
 			}
-			wg.Add(1)
-			go func(dr *displayResource) {
-				downloadFile(dr.src)
-				wg.Done()
-			}(res[len(res)-1])
+		case sm.Typename == "GraphImage":
+			paths <- sm.DisplayResources[2].Src
+		case sm.Typename == "GraphVideo":
+			return errors.New("graphvideo type is not yet supported")
 		}
-		wg.Wait()
-	case profilePage:
-		fmt.Println("profile page is not yet supported")
+	default:
+		return errors.New("instagram.scrapeImages: unrecognized page type")
 	}
-	return nil
+	close(paths)
+	return <-errc
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("requires a URL")
+		fmt.Fprintln(os.Stderr, "requires a URL")
 		os.Exit(1)
 	}
 	if _, err := url.Parse(os.Args[1]); err != nil {
