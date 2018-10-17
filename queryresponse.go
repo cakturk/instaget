@@ -1,6 +1,7 @@
 package main
 
-type QueryResponse struct {
+// PaginationQueryResponse is returned by pagination requests
+type PaginationQueryResponse struct {
 	Data struct {
 		User struct {
 			EdgeOwnerToTimelineMedia struct {
