@@ -20,6 +20,13 @@ type ShortcodeQueryResponse struct {
 				ConfigWidth  int    `json:"config_width"`
 				ConfigHeight int    `json:"config_height"`
 			} `json:"display_resources"`
+			DashInfo struct {
+				IsDashEligible    bool        `json:"is_dash_eligible"`
+				VideoDashManifest interface{} `json:"video_dash_manifest"`
+				NumberOfQualities int         `json:"number_of_qualities"`
+			} `json:"dash_info"`
+			VideoURL              string `json:"video_url"`
+			VideoViewCount        int    `json:"video_view_count"`
 			IsVideo               bool   `json:"is_video"`
 			ShouldLogClientEvent  bool   `json:"should_log_client_event"`
 			TrackingToken         string `json:"tracking_token"`
@@ -90,6 +97,12 @@ type ShortcodeQueryResponse struct {
 			EdgeWebMediaToRelatedMedia struct {
 				Edges []interface{} `json:"edges"`
 			} `json:"edge_web_media_to_related_media"`
+			EncodingStatus        interface{} `json:"encoding_status"`
+			IsPublished           bool        `json:"is_published"`
+			ProductType           string      `json:"product_type"`
+			Title                 string      `json:"title"`
+			VideoDuration         float64     `json:"video_duration"`
+			ThumbnailSrc          string      `json:"thumbnail_src"`
 			EdgeSidecarToChildren struct {
 				Edges []struct {
 					Node struct {
