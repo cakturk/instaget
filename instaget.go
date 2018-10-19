@@ -1,11 +1,15 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path"
@@ -19,6 +23,7 @@ import (
 
 const (
 	userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.100 Safari/537.36"
+	queryURL  = "https://www.instagram.com/graphql/query"
 	queryHash = "5b0222df65d7f6659c9b82246780caa7"
 )
 
@@ -262,6 +267,32 @@ func httpGet(url string) (resp *http.Response, err error) {
 	return resp, nil
 }
 
+func xhr(u *url.URL, query url.Values, rhxGis string) (resp *http.Response, err error) {
+	u.RawQuery = query.Encode()
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+	signature := md5.Sum([]byte(fmt.Sprintf("%s:%s", rhxGis, query.Get("variables"))))
+	// let the golang handle content-encoding automagically by not setting
+	// an accept-encoding header.
+	// req.Header.Set("accept-encoding", "gzip, deflate, br")
+	req.Header.Set("accept", "*/*")
+	req.Header.Set("accept-language", "en-US,en;q=0.9")
+	req.Header.Set("User-Agent", userAgent)
+	req.Header.Set("x-instagram-gis", hex.EncodeToString(signature[:]))
+	req.Header.Set("x-requested-with", "XMLHttpRequest")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode != http.StatusOK {
+		resp.Body.Close()
+		return nil, fmt.Errorf("instaget.xhr: %s", resp.Status)
+	}
+	return resp, nil
+}
+
 func downloadFile(urlStr string) error {
 	resp, err := httpGet(urlStr)
 	if err != nil {
@@ -296,7 +327,122 @@ func downloadWorker(urls <-chan string) <-chan error {
 	return errCh
 }
 
-func scrapeWorker() {
+func doShortcodeRequest(shortcode string) (*ShortcodeQueryResponse, error) {
+	resp, err := httpGet("https://www.instagram.com/p/" + shortcode + "/?__a=1")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	p := new(ShortcodeQueryResponse)
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(p)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}
+
+// {"id":"25025320","first":12,"after":"QVFDU3ROMnNTc0x1bERDSWN2Ulh2VGlpTE5ZM1R3TkRGb21DTlVWaW8zWTJtZ3dHRzRuMDZkdEF5cXFxQk9hWmNFNjk1RC01cjhUcTlsNkJiMGctejM5WA=="}
+type paginationQuery struct {
+	ID    string `json:"id"`
+	First int    `json:"first"`
+	After string `json:"after"`
+}
+
+func preparePaginationQuery() (*url.URL, error) {
+	return nil, nil
+}
+
+func doPaginationRequest(p *ProfilePostPage) (*PaginationQueryResponse, error) {
+	user := &p.EntryData.ProfilePage[0].Graphql.User
+	query := url.Values{}
+	query.Add("query_hash", queryHash)
+	pr := &paginationQuery{
+		ID:    user.ID,
+		First: 12,
+		After: user.EdgeOwnerToTimelineMedia.PageInfo.EndCursor,
+	}
+	b, err := json.Marshal(pr)
+	if err != nil {
+		return nil, err
+	}
+	query.Add("variables", string(b))
+	u, err := url.Parse(queryURL)
+	if err != nil {
+		return nil, err
+	}
+	u.RawQuery = query.Encode()
+	resp, err := xhr(u, query, p.RhxGis)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	qresp := new(PaginationQueryResponse)
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(qresp)
+	if err != nil {
+		return nil, err
+	}
+	return qresp, nil
+}
+
+func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
+	tm := &p.EntryData.ProfilePage[0].Graphql.User.EdgeOwnerToTimelineMedia
+	// Handle the first page first as a special case, and then do
+	// pagination requests.
+	for i := range tm.Edges {
+		n := &tm.Edges[i].Node
+		switch {
+		case n.Typename == "GraphImage":
+			paths <- n.DisplayURL
+		case n.Typename == "GraphSidecar":
+			resp, err := doShortcodeRequest(n.Shortcode)
+			if err != nil {
+				return err
+			}
+			edges := resp.Graphql.ShortcodeMedia.EdgeSidecarToChildren.Edges
+			for i := range edges {
+				paths <- edges[i].Node.DisplayResources[2].Src
+			}
+		case n.Typename == "GraphVideo":
+			resp, err := doShortcodeRequest(n.Shortcode)
+			if err != nil {
+				return err
+			}
+			paths <- resp.Graphql.ShortcodeMedia.VideoURL
+		default:
+		}
+	}
+	var hasNext bool
+	hasNext = tm.PageInfo.HasNextPage
+	for hasNext {
+		resp, err := doPaginationRequest(p)
+		if err != nil {
+			return err
+		}
+		hasNext = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.HasNextPage
+		break
+	}
+	return nil
+}
+
+func scrapePostPage(paths chan<- string, p *ProfilePostPage) error {
+	sm := &p.EntryData.PostPage[0].Graphql.ShortcodeMedia
+	switch {
+	case len(sm.EdgeSidecarToChildren.Edges) > 0:
+		edges := sm.EdgeSidecarToChildren.Edges
+		for i := range edges {
+			e := &edges[i]
+			paths <- e.Node.DisplayResources[2].Src
+		}
+	case sm.Typename == "GraphImage":
+		paths <- sm.DisplayResources[2].Src
+	case sm.Typename == "GraphVideo":
+		paths <- sm.VideoURL
+	default:
+		return errors.New("unrecognized type in __typename")
+	}
+	return nil
 }
 
 func scrapeImages(u string) error {
@@ -318,22 +464,20 @@ func scrapeImages(u string) error {
 	errc := downloadWorker(paths)
 	switch {
 	case len(p.EntryData.ProfilePage) > 0:
+		// presp, err := doPaginationRequest(p)
+		// if err != nil {
+		// 	fmt.Printf("pagination error: %v\n", err)
+		// }
+		// fmt.Printf("response: %v\n", presp)
+		err = scrapeProfilePage(paths, p)
 	case len(p.EntryData.PostPage) > 0:
-		sm := &p.EntryData.PostPage[0].Graphql.ShortcodeMedia
-		switch {
-		case len(sm.EdgeSidecarToChildren.Edges) > 0:
-			edges := sm.EdgeSidecarToChildren.Edges
-			for i := range edges {
-				e := &edges[i]
-				paths <- e.Node.DisplayResources[2].Src
-			}
-		case sm.Typename == "GraphImage":
-			paths <- sm.DisplayResources[2].Src
-		case sm.Typename == "GraphVideo":
-			return errors.New("graphvideo type is not yet supported")
-		}
+		err = scrapePostPage(paths, p)
 	default:
 		return errors.New("instagram.scrapeImages: unrecognized page type")
+	}
+	if err != nil {
+		log.Printf("error while scraping: %v\n", err)
+
 	}
 	close(paths)
 	return <-errc
@@ -348,6 +492,8 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+	jar, _ := cookiejar.New(nil)
+	http.DefaultClient.Jar = jar
 	if err := scrapeImages(os.Args[1]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
