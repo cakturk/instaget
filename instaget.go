@@ -7,13 +7,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"os"
 	"path"
 	"strings"
+	"sync"
 
 	"golang.org/x/net/html"
 )
@@ -312,19 +312,21 @@ func downloadFile(urlStr string) error {
 	return nil
 }
 
-func downloadWorker(urls <-chan string) <-chan error {
-	errCh := make(chan error, 1)
-	go func() {
-		for u := range urls {
-			err := downloadFile(u)
-			if err != nil {
-				errCh <- err
-				return
+func downloadResources(done chan struct{}, errc chan<- error, urls <-chan string) {
+	for u := range urls {
+		if err := downloadFile(u); err != nil {
+			select {
+			case errc <- err:
+			case <-done:
+				break
 			}
 		}
-		errCh <- nil
-	}()
-	return errCh
+		select {
+		case <-done:
+			break
+		default:
+		}
+	}
 }
 
 func doShortcodeRequest(shortcode string) (*ShortcodeQueryResponse, error) {
@@ -464,26 +466,36 @@ func scrapeImages(u string) error {
 		return err
 	}
 	paths := make(chan string)
-	errc := downloadWorker(paths)
+	errc := make(chan error, 1)
+	done := make(chan struct{})
+	defer close(done)
+	const numWorkers = 10
+	var wg sync.WaitGroup
+	wg.Add(numWorkers)
+	for i := 0; i < numWorkers; i++ {
+		go func() {
+			downloadResources(done, errc, paths)
+			wg.Done()
+		}()
+	}
 	switch {
 	case len(p.EntryData.ProfilePage) > 0:
-		// presp, err := doPaginationRequest(p)
-		// if err != nil {
-		// 	fmt.Printf("pagination error: %v\n", err)
-		// }
-		// fmt.Printf("response: %v\n", presp)
 		err = scrapeProfilePage(paths, p)
 	case len(p.EntryData.PostPage) > 0:
 		err = scrapePostPage(paths, p)
 	default:
-		return errors.New("instagram.scrapeImages: unrecognized page type")
-	}
-	if err != nil {
-		log.Printf("error while scraping: %v\n", err)
-
+		err = errors.New("instaget.scrapeImages: unrecognized page type")
 	}
 	close(paths)
-	return <-errc
+	wg.Wait()
+	close(errc)
+	if err != nil {
+		return err
+	}
+	if err = <-errc; err != nil {
+		return err
+	}
+	return nil
 }
 
 func main() {
