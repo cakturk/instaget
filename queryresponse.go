@@ -130,3 +130,24 @@ type PaginationQueryResponse struct {
 	} `json:"data"`
 	Status string `json:"status"`
 }
+
+func (p *PaginationQueryResponse) listURLs() []string {
+	var urls []string
+	tmEdges := p.Data.User.EdgeOwnerToTimelineMedia.Edges
+	for i := range tmEdges {
+		node := &tmEdges[i].Node
+		switch {
+		case len(node.EdgeSidecarToChildren.Edges) > 0:
+			edges := node.EdgeSidecarToChildren.Edges
+			for i := range edges {
+				r := &edges[i]
+				urls = append(urls, r.Node.DisplayResources[2].Src)
+			}
+		case node.Typename == "GraphImage":
+			urls = append(urls, node.DisplayResources[2].Src)
+		case node.Typename == "GraphVideo":
+			urls = append(urls, node.VideoURL)
+		}
+	}
+	return urls
+}

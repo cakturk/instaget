@@ -342,25 +342,25 @@ func doShortcodeRequest(shortcode string) (*ShortcodeQueryResponse, error) {
 	return p, nil
 }
 
-// {"id":"25025320","first":12,"after":"QVFDU3ROMnNTc0x1bERDSWN2Ulh2VGlpTE5ZM1R3TkRGb21DTlVWaW8zWTJtZ3dHRzRuMDZkdEF5cXFxQk9hWmNFNjk1RC01cjhUcTlsNkJiMGctejM5WA=="}
 type paginationQuery struct {
 	ID    string `json:"id"`
 	First int    `json:"first"`
 	After string `json:"after"`
 }
 
-func preparePaginationQuery() (*url.URL, error) {
-	return nil, nil
+type pager interface {
+	id() string
+	endCursor() string
+	rhxGis() string
 }
 
-func doPaginationRequest(p *ProfilePostPage) (*PaginationQueryResponse, error) {
-	user := &p.EntryData.ProfilePage[0].Graphql.User
+func getNextPage(id string, endCursor string, rhxGis string) (*PaginationQueryResponse, error) {
 	query := url.Values{}
 	query.Add("query_hash", queryHash)
 	pr := &paginationQuery{
-		ID:    user.ID,
+		ID:    id,
 		First: 12,
-		After: user.EdgeOwnerToTimelineMedia.PageInfo.EndCursor,
+		After: endCursor,
 	}
 	b, err := json.Marshal(pr)
 	if err != nil {
@@ -372,7 +372,7 @@ func doPaginationRequest(p *ProfilePostPage) (*PaginationQueryResponse, error) {
 		return nil, err
 	}
 	u.RawQuery = query.Encode()
-	resp, err := xhr(u, query, p.RhxGis)
+	resp, err := xhr(u, query, rhxGis)
 	if err != nil {
 		return nil, err
 	}
@@ -384,6 +384,10 @@ func doPaginationRequest(p *ProfilePostPage) (*PaginationQueryResponse, error) {
 		return nil, err
 	}
 	return qresp, nil
+}
+
+type urlLister interface {
+	listURLs() []string
 }
 
 func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
@@ -415,32 +419,31 @@ func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
 	}
 	var hasNext bool
 	hasNext = tm.PageInfo.HasNextPage
+	user := &p.EntryData.ProfilePage[0].Graphql.User
+	endCursor := user.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
+	rhxGis := p.RhxGis
+	count := 0
 	for hasNext {
-		resp, err := doPaginationRequest(p)
+		resp, err := getNextPage(user.ID, endCursor, rhxGis)
 		if err != nil {
 			return err
 		}
+		for _, u := range resp.listURLs() {
+			paths <- u
+		}
 		hasNext = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.HasNextPage
-		break
+		endCursor = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
+		count++
+		if count > 3 {
+			break
+		}
 	}
 	return nil
 }
 
 func scrapePostPage(paths chan<- string, p *ProfilePostPage) error {
-	sm := &p.EntryData.PostPage[0].Graphql.ShortcodeMedia
-	switch {
-	case len(sm.EdgeSidecarToChildren.Edges) > 0:
-		edges := sm.EdgeSidecarToChildren.Edges
-		for i := range edges {
-			e := &edges[i]
-			paths <- e.Node.DisplayResources[2].Src
-		}
-	case sm.Typename == "GraphImage":
-		paths <- sm.DisplayResources[2].Src
-	case sm.Typename == "GraphVideo":
-		paths <- sm.VideoURL
-	default:
-		return errors.New("unrecognized type in __typename")
+	for _, u := range p.listURLs() {
+		paths <- u
 	}
 	return nil
 }

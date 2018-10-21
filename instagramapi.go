@@ -822,3 +822,21 @@ type ProfilePostPage struct {
 	BundleVariant  string `json:"bundle_variant"`
 	ProbablyHasApp bool   `json:"probably_has_app"`
 }
+
+func (p *ProfilePostPage) listURLs() []string {
+	var urls []string
+	sm := &p.EntryData.PostPage[0].Graphql.ShortcodeMedia
+	switch {
+	case len(sm.EdgeSidecarToChildren.Edges) > 0:
+		edges := sm.EdgeSidecarToChildren.Edges
+		for i := range edges {
+			r := &edges[i]
+			urls = append(urls, r.Node.DisplayResources[2].Src)
+		}
+	case sm.Typename == "GraphImage":
+		urls = append(urls, sm.DisplayResources[2].Src)
+	case sm.Typename == "GraphVideo":
+		urls = append(urls, sm.VideoURL)
+	}
+	return urls
+}
