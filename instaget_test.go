@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"reflect"
 	"testing"
+	"time"
 )
 
 func readAllOrDie(s string, t *testing.T) []byte {
@@ -141,6 +142,89 @@ func TestProfilePage(t *testing.T) {
 		err := json.Unmarshal(buf, p)
 		if err != nil {
 			t.Error(err)
+		}
+	}
+}
+
+type testTimeSource struct {
+	t time.Time
+}
+
+func (t testTimeSource) time() time.Time {
+	return t.t
+}
+
+var dates = []struct {
+	tm   testTimeSource
+	want rangeStatus
+}{
+
+	// time values in reverse chronological order
+	{testTimeSource{time.Date(2006, time.Month(11), 3, 10, 28, 0, 0, time.UTC)}, cont},
+	{testTimeSource{time.Date(2005, time.Month(12), 2, 7, 25, 0, 0, time.UTC)}, cont},
+	{testTimeSource{time.Date(2005, time.Month(11), 21, 22, 15, 0, 0, time.UTC)}, inRange},
+	{testTimeSource{time.Date(2005, time.Month(11), 3, 10, 28, 0, 0, time.UTC)}, inRange},
+	{testTimeSource{time.Date(2004, time.Month(10), 3, 10, 27, 0, 0, time.UTC)}, outOfRange},
+	{testTimeSource{time.Date(2004, time.Month(8), 7, 2, 23, 0, 0, time.UTC)}, outOfRange},
+}
+
+func TestTimeRange(t *testing.T) {
+	r := timeRange{
+		start: time.Date(2005, time.Month(11), 21, 22, 15, 0, 0, time.UTC),
+		end:   time.Date(2004, time.Month(10), 3, 10, 27, 0, 0, time.UTC),
+	}
+	for _, d := range dates {
+		got := r.includes(d.tm)
+		if got != d.want {
+			t.Errorf("got: %v, want: %v", got, d.want)
+		}
+	}
+}
+
+type ts struct{}
+
+func (ts) time() time.Time {
+	return time.Now()
+}
+
+func TestCounRange(t *testing.T) {
+	expected := []rangeStatus{
+		cont, cont, cont, inRange, inRange,
+		inRange, outOfRange, outOfRange,
+	}
+	var ts ts
+	cr := countRange{
+		off:   3,
+		count: 6,
+	}
+	for _, want := range expected {
+		got := cr.includes(ts)
+		if got != want {
+			t.Errorf("got: %v, want: %v, s: %v", got, want, cr)
+		}
+	}
+}
+
+func TestCountTimeRange(t *testing.T) {
+	cr := countTimeRange{
+		off: 2,
+		to:  time.Date(2004, time.Month(10), 3, 10, 27, 0, 0, time.UTC),
+	}
+	for _, d := range dates {
+		if got := cr.includes(d.tm); got != d.want {
+			t.Errorf("got: %v, want: %v", got, d.want)
+		}
+	}
+}
+
+func TestTimeCountRange(t *testing.T) {
+	cr := timeCountRange{
+		from:  time.Date(2005, time.Month(11), 21, 22, 15, 0, 0, time.UTC),
+		count: 2,
+	}
+	for _, d := range dates {
+		if got := cr.includes(d.tm); got != d.want {
+			t.Errorf("got: %v, want: %v, tim: %v", got, d.want, d.tm.time())
 		}
 	}
 }

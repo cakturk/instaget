@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
@@ -14,6 +16,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -392,6 +395,22 @@ type urlLister interface {
 	listURLs() []string
 }
 
+type timeSource interface {
+	time() time.Time
+}
+
+type rangeStatus int
+
+const (
+	cont rangeStatus = iota + 1
+	inRange
+	outOfRange
+)
+
+type rangeInfo interface {
+	includes(b timeSource) rangeStatus
+}
+
 func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
 	tm := &p.EntryData.ProfilePage[0].Graphql.User.EdgeOwnerToTimelineMedia
 	// Handle the first page first as a special case, and then do
@@ -498,7 +517,160 @@ func scrapeImages(u string) error {
 	return nil
 }
 
+var layouts = [...]string{
+	"2006-01-02 15:04",
+	"2006-01-02",
+}
+
+func parseTime(val string) (time.Time, error) {
+	var err error
+	for _, l := range layouts {
+		var tim time.Time
+		tim, err = time.ParseInLocation(l, val, time.Local)
+		if err == nil {
+			return tim, nil
+		}
+	}
+	return time.Time{}, err
+}
+
+func validateRange() error {
+	if *from != "" && *offset != -1 {
+		return errors.New("mutual exclusive options 'offset' and 'from'")
+	}
+	if *to != "" && *count != -1 {
+		return errors.New("mutual exclusive options 'count' and 'to'")
+	}
+	if *from != "" && *to != "" {
+		timeFrom, err := parseTime(*from)
+		if err != nil {
+			flag.Usage()
+			log.Fatal(err)
+		}
+		timeTo, err := parseTime(*to)
+		if err != nil {
+			flag.Usage()
+			log.Fatal(err)
+		}
+		_ = timeFrom
+		_ = timeTo
+	}
+	// if *offset > -1 {
+	// 	flag.Usage()
+	// }
+	// timeTo, err := parseTime(*to)
+	// if err != nil {
+	// 	flag.Usage()
+	// }
+	// if *count > -1 {
+	// 	flag.Usage()
+	// }
+	return nil
+}
+
+type timeCountRange struct {
+	from  time.Time
+	count int
+	curr  int
+}
+
+func (t *timeCountRange) includes(i timeSource) rangeStatus {
+	tim := i.time()
+	if tim.After(t.from) {
+		return cont
+	}
+	if t.curr < t.count {
+		t.curr++
+		return inRange
+	}
+	return outOfRange
+}
+
+type countTimeRange struct {
+	off  int
+	curr int
+	to   time.Time
+}
+
+func (t *countTimeRange) includes(i timeSource) rangeStatus {
+	tim := i.time()
+	if tim.Before(t.to) || tim.Equal(t.to) {
+		return outOfRange
+	}
+	if tim.After(t.to) {
+		defer func() { t.curr++ }()
+		if t.curr < t.off {
+			return cont
+		}
+		return inRange
+	}
+	return outOfRange
+}
+
+type countRange struct {
+	off   int
+	count int
+	next  int
+}
+
+func (c *countRange) includes(timeSource) rangeStatus {
+	if c.next < c.off {
+		c.next++
+		return cont
+	}
+	if c.next >= c.off && c.next < c.count {
+		c.next++
+		return inRange
+	}
+	return outOfRange
+}
+
+type timeRange struct {
+	start time.Time
+	end   time.Time
+}
+
+func (t *timeRange) includes(i timeSource) rangeStatus {
+	c := i.time()
+	if c.After(t.start) {
+		return cont
+	}
+	if c.Equal(t.start) {
+		return inRange
+	}
+	if c.Before(t.start) && c.After(t.end) {
+		return inRange
+	}
+	return outOfRange
+}
+
+type nopRange struct{}
+
+func (nopRange) includes(timeSource) bool {
+	return true
+}
+
+var (
+	// from and to are in reverse-chronological order
+	from   = flag.String("from", "", "Download posts on or older than the specified date")
+	to     = flag.String("to", "", "Download posts to or newer than the specified date")
+	offset = flag.Int("offset", -1, "Starting post")
+	count  = flag.Int("count", -1, "Downloads up to count posts at offset 'offset' (from the start of the timeline)")
+)
+
 func main() {
+	flag.Parse()
+	// tim, err := time.ParseInLocation(timeFmt, *from, time.Local)
+	start, err := parseTime(*from)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_, err = parseTime(*to)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("time: %v, err: %v\n", start, err)
+	return
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, "requires a URL")
 		os.Exit(1)
