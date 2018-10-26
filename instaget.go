@@ -534,38 +534,68 @@ func parseTime(val string) (time.Time, error) {
 	return time.Time{}, err
 }
 
-func validateRange() error {
+func createRangeInfo() (rangeInfo, error) {
+	const (
+		flagFrom  = 0x01
+		flagTo    = 0x02
+		flagOff   = 0x04
+		flagCount = 0x08
+
+		rTimeRange      = flagFrom | flagTo
+		rCountRange     = flagOff | flagCount
+		rCountTimeRange = flagOff | flagTo
+		rTimeCountRange = flagFrom | flagCount
+	)
 	if *from != "" && *offset != -1 {
-		return errors.New("mutual exclusive options 'offset' and 'from'")
+		return nil, errors.New("mutual exclusive options 'offset' and 'from'")
 	}
-	if *to != "" && *count != -1 {
-		return errors.New("mutual exclusive options 'count' and 'to'")
+	if *to != "" && *count > 0 {
+		fmt.Println(*to, *count)
+		return nil, errors.New("mutual exclusive options 'count' and 'to'")
 	}
-	if *from != "" && *to != "" {
-		timeFrom, err := parseTime(*from)
+	var (
+		err      error
+		flags    uint
+		timeFrom time.Time
+		timeTo   time.Time
+	)
+	if *from != "" {
+		timeFrom, err = parseTime(*from)
 		if err != nil {
-			flag.Usage()
-			log.Fatal(err)
+			return nil, err
 		}
-		timeTo, err := parseTime(*to)
-		if err != nil {
-			flag.Usage()
-			log.Fatal(err)
-		}
-		_ = timeFrom
-		_ = timeTo
+		flags |= flagFrom
 	}
-	// if *offset > -1 {
-	// 	flag.Usage()
-	// }
-	// timeTo, err := parseTime(*to)
-	// if err != nil {
-	// 	flag.Usage()
-	// }
-	// if *count > -1 {
-	// 	flag.Usage()
-	// }
-	return nil
+	if *to != "" {
+		timeTo, err = parseTime(*to)
+		if err != nil {
+			return nil, err
+		}
+		flags |= flagTo
+	}
+	if *offset > -1 {
+		flags |= flagOff
+	}
+	if *count > 0 {
+		flags |= flagCount
+	}
+	switch flags {
+	case rTimeRange:
+		return &timeRange{
+			start: timeFrom,
+			end:   timeTo,
+		}, nil
+	case rCountRange:
+		return &countRange{
+			off:   *offset,
+			count: *count,
+		}, nil
+	case rCountTimeRange:
+		return &countTimeRange{off: *offset, to: timeTo}, nil
+	case rTimeCountRange:
+		return &timeCountRange{from: timeFrom, count: *count}, nil
+	}
+	return nopRange{}, nil
 }
 
 type timeCountRange struct {
@@ -646,8 +676,8 @@ func (t *timeRange) includes(i timeSource) rangeStatus {
 
 type nopRange struct{}
 
-func (nopRange) includes(timeSource) bool {
-	return true
+func (nopRange) includes(timeSource) rangeStatus {
+	return inRange
 }
 
 var (
@@ -655,33 +685,27 @@ var (
 	from   = flag.String("from", "", "Download posts on or older than the specified date")
 	to     = flag.String("to", "", "Download posts to or newer than the specified date")
 	offset = flag.Int("offset", -1, "Starting post")
-	count  = flag.Int("count", -1, "Downloads up to count posts at offset 'offset' (from the start of the timeline)")
+	count  = flag.Int("count", 0, "Downloads up to count posts at offset 'offset' (from the start of the timeline)")
 )
 
 func main() {
 	flag.Parse()
-	// tim, err := time.ParseInLocation(timeFmt, *from, time.Local)
-	start, err := parseTime(*from)
-	if err != nil {
-		log.Fatal(err)
-	}
-	_, err = parseTime(*to)
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Printf("time: %v, err: %v\n", start, err)
-	return
-	if len(os.Args) < 2 {
+	if len(flag.Args()) < 1 {
 		fmt.Fprintln(os.Stderr, "requires a URL")
 		os.Exit(1)
 	}
-	if _, err := url.Parse(os.Args[1]); err != nil {
+	rngInfo, err := createRangeInfo()
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = rngInfo
+	if _, err := url.Parse(flag.Args()[0]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 	jar, _ := cookiejar.New(nil)
 	http.DefaultClient.Jar = jar
-	if err := scrapeImages(os.Args[1]); err != nil {
+	if err := scrapeImages(flag.Args()[0]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
