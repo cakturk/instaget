@@ -450,7 +450,6 @@ func scrapeProfilePage(ri rangeInfo, paths chan<- string, p *ProfilePostPage) er
 	user := &p.EntryData.ProfilePage[0].Graphql.User
 	endCursor := user.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
 	rhxGis := p.RhxGis
-	// count := 0
 	for hasNext {
 		resp, err := getNextPage(user.ID, endCursor, rhxGis)
 		if err != nil {
@@ -468,10 +467,6 @@ func scrapeProfilePage(ri rangeInfo, paths chan<- string, p *ProfilePostPage) er
 		}
 		hasNext = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.HasNextPage
 		endCursor = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
-		// count++
-		// if count > 3 {
-		// 	break
-		// }
 	}
 	return nil
 }
