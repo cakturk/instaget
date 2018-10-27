@@ -411,12 +411,19 @@ type rangeInfo interface {
 	includes(b timeSource) rangeStatus
 }
 
-func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
+func scrapeProfilePage(ri rangeInfo, paths chan<- string, p *ProfilePostPage) error {
 	tm := &p.EntryData.ProfilePage[0].Graphql.User.EdgeOwnerToTimelineMedia
 	// Handle the first page first as a special case, and then do
 	// pagination requests.
 	for i := range tm.Edges {
 		n := &tm.Edges[i].Node
+		switch ri.includes(p) {
+		case cont:
+			continue
+		case outOfRange:
+			return nil
+		case inRange:
+		}
 		switch {
 		case n.Typename == "GraphImage":
 			paths <- n.DisplayURL
@@ -443,21 +450,28 @@ func scrapeProfilePage(paths chan<- string, p *ProfilePostPage) error {
 	user := &p.EntryData.ProfilePage[0].Graphql.User
 	endCursor := user.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
 	rhxGis := p.RhxGis
-	count := 0
+	// count := 0
 	for hasNext {
 		resp, err := getNextPage(user.ID, endCursor, rhxGis)
 		if err != nil {
 			return err
+		}
+		switch ri.includes(resp) {
+		case cont:
+			continue
+		case outOfRange:
+			return nil
+		case inRange:
 		}
 		for _, u := range resp.listURLs() {
 			paths <- u
 		}
 		hasNext = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.HasNextPage
 		endCursor = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.EndCursor
-		count++
-		if count > 3 {
-			break
-		}
+		// count++
+		// if count > 3 {
+		// 	break
+		// }
 	}
 	return nil
 }
@@ -469,7 +483,7 @@ func scrapePostPage(paths chan<- string, p *ProfilePostPage) error {
 	return nil
 }
 
-func scrapeImages(u string) error {
+func scrapeImages(ri rangeInfo, u string) error {
 	resp, err := httpGet(u)
 	if err != nil {
 		return err
@@ -499,7 +513,7 @@ func scrapeImages(u string) error {
 	}
 	switch {
 	case len(p.EntryData.ProfilePage) > 0:
-		err = scrapeProfilePage(paths, p)
+		err = scrapeProfilePage(ri, paths, p)
 	case len(p.EntryData.PostPage) > 0:
 		err = scrapePostPage(paths, p)
 	default:
@@ -648,7 +662,7 @@ func (c *countRange) includes(timeSource) rangeStatus {
 		c.next++
 		return cont
 	}
-	if c.next >= c.off && c.next < c.count {
+	if c.next >= c.off && c.next < c.off+c.count {
 		c.next++
 		return inRange
 	}
@@ -705,7 +719,7 @@ func main() {
 	}
 	jar, _ := cookiejar.New(nil)
 	http.DefaultClient.Jar = jar
-	if err := scrapeImages(flag.Args()[0]); err != nil {
+	if err := scrapeImages(rngInfo, flag.Args()[0]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}

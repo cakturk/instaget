@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 // ProfilePostPage is 2896 bytes
 type ProfilePostPage struct {
 	ActivityCounts interface{} `json:"activity_counts"`
@@ -839,4 +841,8 @@ func (p *ProfilePostPage) listURLs() []string {
 		urls = append(urls, sm.VideoURL)
 	}
 	return urls
+}
+
+func (p *ProfilePostPage) time() time.Time {
+	return time.Now()
 }

@@ -190,12 +190,12 @@ func (ts) time() time.Time {
 func TestCounRange(t *testing.T) {
 	expected := []rangeStatus{
 		cont, cont, cont, inRange, inRange,
-		inRange, outOfRange, outOfRange,
+		inRange, inRange, outOfRange, outOfRange,
 	}
 	var ts ts
 	cr := countRange{
 		off:   3,
-		count: 6,
+		count: 4,
 	}
 	for _, want := range expected {
 		got := cr.includes(ts)

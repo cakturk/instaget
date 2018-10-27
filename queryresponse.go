@@ -1,5 +1,7 @@
 package main
 
+import "time"
+
 // PaginationQueryResponse is returned by pagination requests
 type PaginationQueryResponse struct {
 	Data struct {
@@ -150,4 +152,8 @@ func (p *PaginationQueryResponse) listURLs() []string {
 		}
 	}
 	return urls
+}
+
+func (p *PaginationQueryResponse) time() time.Time {
+	return time.Now()
 }
