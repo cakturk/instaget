@@ -50,63 +50,13 @@ type ProfilePostPage struct {
 						Count int           `json:"count"`
 						Edges []interface{} `json:"edges"`
 					} `json:"edge_mutual_followed_by"`
-					ProfilePicURL            string      `json:"profile_pic_url"`
-					ProfilePicURLHd          string      `json:"profile_pic_url_hd"`
-					RequestedByViewer        bool        `json:"requested_by_viewer"`
-					Username                 string      `json:"username"`
-					ConnectedFbPage          interface{} `json:"connected_fb_page"`
-					EdgeOwnerToTimelineMedia struct {
-						Count    int `json:"count"`
-						PageInfo struct {
-							HasNextPage bool   `json:"has_next_page"`
-							EndCursor   string `json:"end_cursor"`
-						} `json:"page_info"`
-						Edges []struct {
-							Node struct {
-								Typename           string `json:"__typename"`
-								ID                 string `json:"id"`
-								EdgeMediaToCaption struct {
-									Edges []struct {
-										Node struct {
-											Text string `json:"text"`
-										} `json:"node"`
-									} `json:"edges"`
-								} `json:"edge_media_to_caption"`
-								Shortcode          string `json:"shortcode"`
-								EdgeMediaToComment struct {
-									Count int `json:"count"`
-								} `json:"edge_media_to_comment"`
-								CommentsDisabled bool `json:"comments_disabled"`
-								TakenAtTimestamp int  `json:"taken_at_timestamp"`
-								Dimensions       struct {
-									Height int `json:"height"`
-									Width  int `json:"width"`
-								} `json:"dimensions"`
-								DisplayURL  string `json:"display_url"`
-								EdgeLikedBy struct {
-									Count int `json:"count"`
-								} `json:"edge_liked_by"`
-								EdgeMediaPreviewLike struct {
-									Count int `json:"count"`
-								} `json:"edge_media_preview_like"`
-								GatingInfo   interface{} `json:"gating_info"`
-								MediaPreview string      `json:"media_preview"`
-								Owner        struct {
-									ID       string `json:"id"`
-									Username string `json:"username"`
-								} `json:"owner"`
-								ThumbnailSrc       string `json:"thumbnail_src"`
-								ThumbnailResources []struct {
-									Src          string `json:"src"`
-									ConfigWidth  int    `json:"config_width"`
-									ConfigHeight int    `json:"config_height"`
-								} `json:"thumbnail_resources"`
-								IsVideo        bool `json:"is_video"`
-								VideoViewCount int  `json:"video_view_count"`
-							} `json:"node"`
-						} `json:"edges"`
-					} `json:"edge_owner_to_timeline_media"`
-					EdgeSavedMedia struct {
+					ProfilePicURL            string                   `json:"profile_pic_url"`
+					ProfilePicURLHd          string                   `json:"profile_pic_url_hd"`
+					RequestedByViewer        bool                     `json:"requested_by_viewer"`
+					Username                 string                   `json:"username"`
+					ConnectedFbPage          interface{}              `json:"connected_fb_page"`
+					EdgeOwnerToTimelineMedia EdgeOwnerToTimelineMedia `json:"edge_owner_to_timeline_media"`
+					EdgeSavedMedia           struct {
 						Count    int `json:"count"`
 						PageInfo struct {
 							HasNextPage bool        `json:"has_next_page"`
@@ -714,7 +664,7 @@ func (p *ProfilePostPage) time() time.Time {
 	return time.Now()
 }
 
-// ShortcodeMedia type is returned
+// ShortcodeMedia type
 type ShortcodeMedia struct {
 	Typename   string `json:"__typename"`
 	ID         string `json:"id"`
