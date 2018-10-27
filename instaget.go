@@ -417,7 +417,7 @@ func scrapeProfilePage(ri rangeInfo, paths chan<- string, p *ProfilePostPage) er
 	// pagination requests.
 	for i := range tm.Edges {
 		n := &tm.Edges[i].Node
-		switch ri.includes(p) {
+		switch ri.includes(n) {
 		case cont:
 			continue
 		case outOfRange:
@@ -455,15 +455,12 @@ func scrapeProfilePage(ri rangeInfo, paths chan<- string, p *ProfilePostPage) er
 		if err != nil {
 			return err
 		}
-		switch ri.includes(resp) {
-		case cont:
-			continue
-		case outOfRange:
-			return nil
-		case inRange:
-		}
-		for _, u := range resp.listURLs() {
+		urls, keepGoing := resp.listURLs(ri)
+		for _, u := range urls {
 			paths <- u
+		}
+		if !keepGoing {
+			return nil
 		}
 		hasNext = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.HasNextPage
 		endCursor = resp.Data.User.EdgeOwnerToTimelineMedia.PageInfo.EndCursor

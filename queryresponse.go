@@ -12,11 +12,18 @@ type PaginationQueryResponse struct {
 	Status string `json:"status"`
 }
 
-func (p *PaginationQueryResponse) listURLs() []string {
+func (p *PaginationQueryResponse) listURLs(ri rangeInfo) ([]string, bool) {
 	var urls []string
 	tmEdges := p.Data.User.EdgeOwnerToTimelineMedia.Edges
 	for i := range tmEdges {
 		node := &tmEdges[i].Node
+		switch ri.includes(node) {
+		case cont:
+			continue
+		case outOfRange:
+			return urls, false
+		case inRange:
+		}
 		switch {
 		case len(node.EdgeSidecarToChildren.Edges) > 0:
 			edges := node.EdgeSidecarToChildren.Edges
@@ -30,11 +37,7 @@ func (p *PaginationQueryResponse) listURLs() []string {
 			urls = append(urls, node.VideoURL)
 		}
 	}
-	return urls
-}
-
-func (p *PaginationQueryResponse) time() time.Time {
-	return time.Now()
+	return urls, true
 }
 
 // EdgeOwnerToTimelineMedia type
@@ -162,3 +165,7 @@ type Node struct {
 		ConfigHeight int    `json:"config_height"`
 	} `json:"thumbnail_resources"`
 } // `json:"node"`
+
+func (n *Node) time() time.Time {
+	return time.Unix(int64(n.TakenAtTimestamp), 0)
+}
