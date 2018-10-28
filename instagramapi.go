@@ -673,15 +673,11 @@ type ShortcodeMedia struct {
 		Height int `json:"height"`
 		Width  int `json:"width"`
 	} `json:"dimensions"`
-	GatingInfo       interface{} `json:"gating_info"`
-	MediaPreview     string      `json:"media_preview"`
-	DisplayURL       string      `json:"display_url"`
-	DisplayResources []struct {
-		Src          string `json:"src"`
-		ConfigWidth  int    `json:"config_width"`
-		ConfigHeight int    `json:"config_height"`
-	} `json:"display_resources"`
-	DashInfo struct {
+	GatingInfo       interface{}       `json:"gating_info"`
+	MediaPreview     string            `json:"media_preview"`
+	DisplayURL       string            `json:"display_url"`
+	DisplayResources []DisplayResource `json:"display_resources"`
+	DashInfo         struct {
 		IsDashEligible    bool        `json:"is_dash_eligible"`
 		VideoDashManifest interface{} `json:"video_dash_manifest"`
 		NumberOfQualities int         `json:"number_of_qualities"`
@@ -774,18 +770,14 @@ type ShortcodeMedia struct {
 					Height int `json:"height"`
 					Width  int `json:"width"`
 				} `json:"dimensions"`
-				GatingInfo       interface{} `json:"gating_info"`
-				MediaPreview     string      `json:"media_preview"`
-				DisplayURL       string      `json:"display_url"`
-				DisplayResources []struct {
-					Src          string `json:"src"`
-					ConfigWidth  int    `json:"config_width"`
-					ConfigHeight int    `json:"config_height"`
-				} `json:"display_resources"`
-				AccessibilityCaption  interface{} `json:"accessibility_caption"`
-				IsVideo               bool        `json:"is_video"`
-				ShouldLogClientEvent  bool        `json:"should_log_client_event"`
-				TrackingToken         string      `json:"tracking_token"`
+				GatingInfo            interface{}       `json:"gating_info"`
+				MediaPreview          string            `json:"media_preview"`
+				DisplayURL            string            `json:"display_url"`
+				DisplayResources      []DisplayResource `json:"display_resources"`
+				AccessibilityCaption  interface{}       `json:"accessibility_caption"`
+				IsVideo               bool              `json:"is_video"`
+				ShouldLogClientEvent  bool              `json:"should_log_client_event"`
+				TrackingToken         string            `json:"tracking_token"`
 				EdgeMediaToTaggedUser struct {
 					Edges []interface{} `json:"edges"`
 				} `json:"edge_media_to_tagged_user"`
