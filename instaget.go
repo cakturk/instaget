@@ -391,10 +391,6 @@ func getNextPage(id string, endCursor string, rhxGis string) (*PaginationQueryRe
 	return qresp, nil
 }
 
-type urlLister interface {
-	listURLs() []string
-}
-
 type timeSource interface {
 	time() time.Time
 }
