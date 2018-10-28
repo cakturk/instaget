@@ -552,6 +552,7 @@ func createRangeInfo() (rangeInfo, error) {
 
 		rTimeRange      = flagFrom | flagTo
 		rCountRange     = flagOff | flagCount
+		rCountRange2    = flagCount
 		rCountTimeRange = flagOff | flagTo
 		rTimeCountRange = flagFrom | flagCount
 	)
@@ -583,15 +584,13 @@ func createRangeInfo() (rangeInfo, error) {
 	}
 	switch flags {
 	case rTimeRange:
-		return &timeRange{
-			start: timeFrom,
-			end:   timeTo,
-		}, nil
-	case rCountRange:
-		return &countRange{
-			off:   *offset,
-			count: *count,
-		}, nil
+		return &timeRange{start: timeFrom, end: timeTo}, nil
+	case rCountRange, rCountRange2:
+		off := 0
+		if *offset > -1 {
+			off = *offset
+		}
+		return &countRange{off: off, count: *count}, nil
 	case rCountTimeRange:
 		return &countTimeRange{off: *offset, to: timeTo}, nil
 	case rTimeCountRange:
@@ -700,7 +699,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	_ = rngInfo
 	if _, err := url.Parse(flag.Args()[0]); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
