@@ -27,15 +27,11 @@ const (
 	queryHash = "5b0222df65d7f6659c9b82246780caa7"
 )
 
-func getJSON(r io.Reader) (string, error) {
+func extractJSON(r io.Reader) (string, error) {
 	n, err := findJSONNode(r)
 	if err != nil {
 		return "", err
 	}
-	return extractJSONString(n)
-}
-
-func extractJSONString(n *html.Node) (string, error) {
 	data := n.Data[:len(n.Data)-1]
 	idx := strings.Index(n.Data, "{")
 	if idx == -1 {
@@ -306,7 +302,7 @@ func scrapeImages(ri rangeInfo, u string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	s, err := getJSON(resp.Body)
+	s, err := extractJSON(resp.Body)
 	if err != nil {
 		return err
 	}
