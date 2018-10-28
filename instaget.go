@@ -541,6 +541,13 @@ func parseTime(val string) (time.Time, error) {
 }
 
 func createRangeInfo() (rangeInfo, error) {
+	if *from != "" && *offset != -1 {
+		return nil, errors.New("mutual exclusive options 'offset' and 'from'")
+	}
+	if *to != "" && *count > 0 {
+		fmt.Println(*to, *count)
+		return nil, errors.New("mutual exclusive options 'count' and 'to'")
+	}
 	const (
 		flagFrom  = 0x01
 		flagTo    = 0x02
@@ -552,13 +559,6 @@ func createRangeInfo() (rangeInfo, error) {
 		rCountTimeRange = flagOff | flagTo
 		rTimeCountRange = flagFrom | flagCount
 	)
-	if *from != "" && *offset != -1 {
-		return nil, errors.New("mutual exclusive options 'offset' and 'from'")
-	}
-	if *to != "" && *count > 0 {
-		fmt.Println(*to, *count)
-		return nil, errors.New("mutual exclusive options 'count' and 'to'")
-	}
 	var (
 		err      error
 		flags    uint
